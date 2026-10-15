@@ -18,6 +18,26 @@ export type ComponentEntry = { id: string; version: number };
  */
 export const COMPONENT_GLOBAL = '__AJIT__';
 
+// ─── Contracts ───────────────────────────────────────────────────────────────
+
+/**
+ * How a component uses one capability. Components never see capability paths:
+ * they address data by the entry's key in their contract.
+ */
+export type ContractEntry = {
+  /** Manifest path of the capability, e.g. `weather.hourly`. */
+  capability: string;
+  /** `mount` runs as soon as the component mounts; `demand` waits for `run()`. */
+  start: 'mount' | 'demand';
+  /** How many received values to retain: the latest, all of them, or the last N. */
+  keep: 'latest' | 'all' | number;
+  /** Default input for a run. `run(input)` replaces it for that run. */
+  input?: unknown;
+};
+
+/** A component's contract: its data, by key. */
+export type Contract = Record<string, ContractEntry>;
+
 // ─── Host page ↔ sandboxed frame (postMessage) ───────────────────────────────
 // The frame can't reach the server itself (its CSP has `connect-src 'none'`),
 // so the host relays everything it needs.
@@ -28,17 +48,18 @@ export type HostToFrame = { type: 'components'; components: ComponentEntry[] };
 export type FrameToHost = { type: 'ready' };
 
 // ─── Capability calls (bridge) ───────────────────────────────────────────────
-//   in:   call { id, path, args } | cancel { id }
-//   out:  result { id, data }                 (request)
-//         next { id, data }* then done { id } (stream / subscribe)
-//         error { id, message }
+// Every call is a stream, whatever the capability's kind: a request sends one
+// `next` and then `done`.
+//   in:   call { id, component, key, input? } | cancel { id }
+//   out:  next { id, data }* then done { id } | error { id, message }
+// A cancelled call sends nothing more.
 
 export type BridgeRequest =
-  | { type: 'call'; id: number; path: string; args?: unknown }
+  /** Runs the `key` entry of `component`'s contract. `input` replaces the entry's default input. */
+  | { type: 'call'; id: number; component: string; key: string; input?: unknown }
   | { type: 'cancel'; id: number };
 
 export type BridgeResponse =
-  | { type: 'result'; id: number; data: unknown }
   | { type: 'next'; id: number; data: unknown }
   | { type: 'done'; id: number }
   | { type: 'error'; id: number; message: string };

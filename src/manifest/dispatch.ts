@@ -28,7 +28,7 @@ export async function* dispatchStream(
   }
 }
 
-/** Normalizes push-style bindings into an AsyncIterable so consumers see two shapes, not three. */
+/** Normalizes push-style bindings into an AsyncIterable, the same shape as a stream. */
 export async function* dispatchSubscribe(
   node: RuntimeCapabilityNode & { kind: 'subscribe' },
   raw: unknown,
@@ -68,3 +68,20 @@ export async function* dispatchSubscribe(
   }
 }
 
+/**
+ * Every kind as one shape: an AsyncIterable of validated outputs. A request
+ * yields its result once and ends; streams and subscriptions run until they
+ * end or `signal` aborts.
+ */
+export function open(node: RuntimeCapabilityNode, raw: unknown, signal: AbortSignal): AsyncIterable<unknown> {
+  switch (node.kind) {
+    case 'request':
+      return (async function* () {
+        yield await dispatchRequest(node, raw, signal);
+      })();
+    case 'stream':
+      return dispatchStream(node, raw, signal);
+    case 'subscribe':
+      return dispatchSubscribe(node, raw, signal);
+  }
+}

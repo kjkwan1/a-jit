@@ -1,13 +1,16 @@
 import { z } from "zod";
-import { dispatchRequest, dispatchStream, dispatchSubscribe } from "../manifest/dispatch.js";
 import type { GroupNode } from "../manifest/define.js";
+import { open } from "../manifest/dispatch.js";
 import { resolve } from "../manifest/view.js";
-import type { BridgeRequest, BridgeResponse } from "../protocol.js";
+import type { BridgeRequest, BridgeResponse, ContractEntry } from "../protocol.js";
 
 /**
- * Node-side end of the frame channel: runs capability calls against the
- * manifest and forwards the results. See `BridgeRequest` and `BridgeResponse`
- * in protocol.ts for the messages.
+ * Node-side end of the frame channel: runs contract entries against the
+ * manifest and streams back the results. See `BridgeRequest` and
+ * `BridgeResponse` in protocol.ts for the messages.
+ *
+ * Components address data by contract key, never by capability path, so a
+ * component can only reach what its contract declares.
  */
 
 /** Validates untrusted messages from the page. */
@@ -15,26 +18,32 @@ const BridgeRequest = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("call"),
     id: z.int(),
-    path: z.string(),
-    args: z.unknown().optional(),
+    component: z.string(),
+    key: z.string(),
+    input: z.unknown().optional(),
   }),
   z.object({ type: z.literal("cancel"), id: z.int() }),
 ]) satisfies z.ZodType<BridgeRequest>;
 
+/** Finds the `key` entry of `component`'s contract. */
+export type ContractLookup = (component: string, key: string) => ContractEntry | undefined;
+
 export function createBridge(
   manifest: GroupNode,
+  lookup: ContractLookup,
   send: (message: BridgeResponse) => void,
 ) {
   const calls = new Map<number, AbortController>();
 
-  async function call(id: number, path: string, args: unknown) {
-    const node = resolve(manifest, path);
-    if (!node)
-      return send({
-        type: "error",
-        id,
-        message: `Unknown capability "${path}"`,
-      });
+  async function call(id: number, component: string, key: string, input: unknown) {
+    const entry = lookup(component, key);
+    if (!entry) {
+      return send({ type: "error", id, message: `Component "${component}" has no contract entry "${key}".` });
+    }
+    const node = resolve(manifest, entry.capability);
+    if (!node) {
+      return send({ type: "error", id, message: `Unknown capability "${entry.capability}".` });
+    }
 
     const controller = new AbortController();
     const { signal } = controller;
@@ -43,33 +52,12 @@ export function createBridge(
     const post = (message: BridgeResponse) => signal.aborted || send(message);
 
     try {
-      switch (node.kind) {
-        case "request":
-          post({
-            type: "result",
-            id,
-            data: await dispatchRequest(node, args, signal),
-          });
-          return;
-        case "stream":
-        case "subscribe": {
-          const items =
-            node.kind === "stream"
-              ? dispatchStream(node, args, signal)
-              : dispatchSubscribe(node, args, signal);
-          for await (const data of items) {
-            post({ type: "next", id, data });
-          }
-          post({ type: "done", id });
-          return;
-        }
+      for await (const data of open(node, input === undefined ? entry.input : input, signal)) {
+        post({ type: "next", id, data });
       }
+      post({ type: "done", id });
     } catch (err) {
-      post({
-        type: "error",
-        id,
-        message: err instanceof Error ? err.message : String(err),
-      });
+      post({ type: "error", id, message: err instanceof Error ? err.message : String(err) });
     } finally {
       calls.delete(id);
     }
@@ -85,7 +73,7 @@ export function createBridge(
       if (message.type === "cancel") {
         calls.get(message.id)?.abort();
       } else {
-        await call(message.id, message.path, message.args);
+        await call(message.id, message.component, message.key, message.input);
       }
     },
 
