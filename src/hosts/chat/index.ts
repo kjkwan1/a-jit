@@ -44,7 +44,7 @@ export const runChat = async (manifest: GroupNode, config: Config) => {
   const view = asView(manifest);
   CLI.print(`Manifest view: ${JSON.stringify(view, null, 2)}`);
   const sandbox = createSandbox();
-  CLI.print(`Components are shown at ${await createPageServer(sandbox).start(config.port)}`);
+  CLI.print(`Components are shown at ${await createPageServer(sandbox, manifest).start(config.port)}`);
 
   const { sendMessage } = await instance.startChat({
     model,

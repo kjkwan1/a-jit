@@ -71,6 +71,7 @@ const contract = {
 const setup = () => {
   const sandbox = createSandbox();
   sandbox.set("c", "", contract);
+  sandbox.set("d", "", contract);
   const sent: BridgeResponse[] = [];
   const bridge = createBridge(m, sandbox.entry, (msg) => void sent.push(msg));
   return { bridge, sent };
@@ -138,6 +139,32 @@ test("subscribe: close() tears the subscription down", async () => {
   bridge.close();
   await pending;
   assert.equal(probe.torndown, true);
+});
+
+test("reset cancels every call", async () => {
+  const { bridge, sent } = setup();
+  probe.torndown = false;
+  const pending = [bridge.handle(call(1, "counter")), bridge.handle(call(2, "events"))];
+  await waitFor(() => sent.some((s) => s.id === 1) && sent.some((s) => s.id === 2));
+  await bridge.handle({ type: "reset" });
+  await Promise.all(pending);
+  assert.equal(probe.streamSignal!.aborted, true);
+  assert.equal(probe.torndown, true);
+});
+
+test("cancelComponent cancels only that component's calls", async () => {
+  const { bridge, sent } = setup();
+  const ofC = bridge.handle(call(1, "counter"));
+  const ofD = bridge.handle({ ...call(2, "counter"), component: "d" });
+  await waitFor(() => sent.some((s) => s.id === 1) && sent.some((s) => s.id === 2));
+  bridge.cancelComponent("c");
+  await ofC;
+
+  const before = sent.filter((s) => s.id === 2).length;
+  await waitFor(() => sent.filter((s) => s.id === 2).length > before);
+  assert.ok(!sent.some((s) => s.id === 1 && s.type !== "next"), "a cancelled call sends no done or error");
+  bridge.close();
+  await ofD;
 });
 
 test("malformed messages are ignored", async () => {

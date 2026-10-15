@@ -1,3 +1,4 @@
+import weather from "../examples/weather.js";
 import { compileComponent } from "../src/sandbox/compile.js";
 import { createSandbox } from "../src/sandbox/sandbox.js";
 import { createPageServer } from "../src/sandbox/server.js";
@@ -56,4 +57,4 @@ for (const [id, source] of Object.entries(sources)) {
   sandbox.set(id, result.code);
 }
 
-console.log(`Open ${await createPageServer(sandbox).start(3000)}`);
+console.log(`Open ${await createPageServer(sandbox, weather).start(3000)}`);

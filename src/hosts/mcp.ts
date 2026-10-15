@@ -16,7 +16,7 @@ import { createPageServer } from "../sandbox/server.js";
 export const runMcp = async (manifest: GroupNode, config: Config) => {
   const view = asView(manifest);
   const sandbox = createSandbox();
-  const page = createPageServer(sandbox);
+  const page = createPageServer(sandbox, manifest);
   const mcp = new McpServer({ name: "a-jit", version: "1.0.0" }, { instructions: buildMcpInstructions() });
 
   for (const t of [...hostTools(view, page, config.port), ...componentTools(sandbox)]) {

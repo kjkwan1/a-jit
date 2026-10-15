@@ -50,14 +50,16 @@ export type FrameToHost = { type: 'ready' };
 // ─── Capability calls (bridge) ───────────────────────────────────────────────
 // Every call is a stream, whatever the capability's kind: a request sends one
 // `next` and then `done`.
-//   in:   call { id, component, key, input? } | cancel { id }
+//   in:   call { id, component, key, input? } | cancel { id } | reset
 //   out:  next { id, data }* then done { id } | error { id, message }
 // A cancelled call sends nothing more.
 
 export type BridgeRequest =
   /** Runs the `key` entry of `component`'s contract. `input` replaces the entry's default input. */
   | { type: 'call'; id: number; component: string; key: string; input?: unknown }
-  | { type: 'cancel'; id: number };
+  | { type: 'cancel'; id: number }
+  /** Cancels every call, e.g. when the frame reloads. */
+  | { type: 'reset' };
 
 export type BridgeResponse =
   | { type: 'next'; id: number; data: unknown }

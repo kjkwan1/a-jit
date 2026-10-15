@@ -23,17 +23,21 @@ const BridgeRequest = z.discriminatedUnion("type", [
     input: z.unknown().optional(),
   }),
   z.object({ type: z.literal("cancel"), id: z.int() }),
+  z.object({ type: z.literal("reset") }),
 ]) satisfies z.ZodType<BridgeRequest>;
 
 /** Finds the `key` entry of `component`'s contract. */
 export type ContractLookup = (component: string, key: string) => ContractEntry | undefined;
+
+export type Bridge = ReturnType<typeof createBridge>;
 
 export function createBridge(
   manifest: GroupNode,
   lookup: ContractLookup,
   send: (message: BridgeResponse) => void,
 ) {
-  const calls = new Map<number, AbortController>();
+  /** Calls in flight, with the component each belongs to. */
+  const calls = new Map<number, { component: string; controller: AbortController }>();
 
   async function call(id: number, component: string, key: string, input: unknown) {
     const entry = lookup(component, key);
@@ -47,7 +51,7 @@ export function createBridge(
 
     const controller = new AbortController();
     const { signal } = controller;
-    calls.set(id, controller);
+    calls.set(id, { component, controller });
     // A cancelled call goes quiet.
     const post = (message: BridgeResponse) => signal.aborted || send(message);
 
@@ -63,6 +67,13 @@ export function createBridge(
     }
   }
 
+  /** Cancels every call. */
+  const close = () => {
+    for (const { controller } of calls.values()) {
+      controller.abort();
+    }
+  };
+
   return {
     async handle(raw: unknown): Promise<void> {
       const parsed = BridgeRequest.safeParse(raw);
@@ -70,17 +81,23 @@ export function createBridge(
         return;
       }
       const message = parsed.data;
-      if (message.type === "cancel") {
-        calls.get(message.id)?.abort();
-      } else {
-        await call(message.id, message.component, message.key, message.input);
+      switch (message.type) {
+        case "call":
+          return call(message.id, message.component, message.key, message.input);
+        case "cancel":
+          return calls.get(message.id)?.controller.abort();
+        case "reset":
+          return close();
       }
     },
 
-    close() {
-      for (const controller of calls.values()) {
-        controller.abort();
+    /** Cancels the calls of one component, e.g. when it is removed or replaced. */
+    cancelComponent(component: string) {
+      for (const call of calls.values()) {
+        if (call.component === component) call.controller.abort();
       }
     },
+
+    close,
   };
 }
