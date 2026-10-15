@@ -87,5 +87,5 @@ test("input is checked against the capability's schema", () => {
 
 test("a mount entry must have the input it needs", () => {
   const [error] = check({ f: { capability: "weather.hourly", start: "mount" } });
-  assert.match(error!, /^f: starts on mount without input, but needs/);
+  assert.match(error!, /^f: starts on mount without input, but "weather.hourly" needs input:/);
 });

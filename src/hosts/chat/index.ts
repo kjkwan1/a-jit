@@ -50,7 +50,7 @@ export const runChat = async (manifest: GroupNode, config: Config) => {
     model,
     systemPrompt: buildSystemPrompt(view),
     maxTokens: 96000,
-    tools: componentTools(sandbox),
+    tools: componentTools(sandbox, manifest),
     onToolCall: (name, result) => CLI.print(`[${name}] ${result.length > 200 ? `${result.slice(0, 200)}…` : result}`),
   });
 

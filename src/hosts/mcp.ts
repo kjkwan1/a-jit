@@ -19,7 +19,7 @@ export const runMcp = async (manifest: GroupNode, config: Config) => {
   const page = createPageServer(sandbox, manifest);
   const mcp = new McpServer({ name: "a-jit", version: "1.0.0" }, { instructions: buildMcpInstructions() });
 
-  for (const t of [...hostTools(view, page, config.port), ...componentTools(sandbox)]) {
+  for (const t of [...hostTools(view, page, config.port), ...componentTools(sandbox, manifest)]) {
     mcp.registerTool(t.name, { description: t.description, inputSchema: t.input }, async (args) => {
       const outcome = await executeTool(t, args);
       const value = outcome.ok ? outcome.result : { error: outcome.error };

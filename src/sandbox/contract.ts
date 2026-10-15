@@ -65,8 +65,11 @@ export function validateContract(contract: Contract, manifest: GroupNode): strin
     if (entry.input === undefined && entry.start === "demand") continue;
     const parsed = node.input.safeParse(entry.input);
     if (!parsed.success) {
-      const what = entry.input === undefined ? "starts on mount without input, but needs" : "has invalid input";
-      errors.push(`${key}: ${what} for "${entry.capability}":\n${z.prettifyError(parsed.error)}`);
+      const what =
+        entry.input === undefined
+          ? `starts on mount without input, but "${entry.capability}" needs input`
+          : `has invalid input for "${entry.capability}"`;
+      errors.push(`${key}: ${what}:\n${z.prettifyError(parsed.error)}`);
     }
   }
 

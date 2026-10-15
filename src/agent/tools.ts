@@ -1,7 +1,9 @@
 import { z } from "zod";
+import type { GroupNode } from "../manifest/define.js";
 import type { ManifestView } from "../manifest/view.js";
 import { COMPONENT_ID } from "../protocol.js";
 import { compileComponent } from "../sandbox/compile.js";
+import { ContractSchema, validateContract } from "../sandbox/contract.js";
 import type { Sandbox } from "../sandbox/sandbox.js";
 import type { PageServer } from "../sandbox/server.js";
 import { describeCapabilities } from "./prompt.js";
@@ -13,20 +15,27 @@ const ComponentId = z
   .describe("Short identifier made of letters, digits, '_' and '-'. Reusing an id replaces that component.");
 
 /** Tools that let the agent manage the components rendered on the page. */
-export const componentTools = (sandbox: Sandbox) => [
+export const componentTools = (sandbox: Sandbox, manifest: GroupNode) => [
   tool({
     name: "submit_component",
     description:
-      "Compile a Preact TSX component and show it on the user's page. " +
-      "On failure, returns the compile errors; fix them and submit again.",
+      "Show a Preact TSX component on the user's page. Write its contract first: the live data it uses, by key. " +
+      "The contract is checked against the capabilities, then the source is compiled. " +
+      "On failure, returns the errors and the stage that failed (\"contract\" or \"compile\"); fix them and submit again.",
+    // Property order is generation order: the contract is decided before the code.
     input: z.object({
       id: ComponentId,
+      contract: ContractSchema.default({}),
       source: z.string().describe("The component's full TSX source, with a default export."),
     }),
-    run: async ({ id, source }) => {
+    run: async ({ id, contract, source }) => {
+      const contractErrors = validateContract(contract, manifest);
+      if (contractErrors.length) {
+        return { ok: false, stage: "contract", errors: contractErrors.map((message) => ({ message })) };
+      }
       const result = await compileComponent(source, id);
-      if (!result.ok) return { ok: false, errors: result.errors };
-      sandbox.set(id, result.code);
+      if (!result.ok) return { ok: false, stage: "compile", errors: result.errors };
+      sandbox.set(id, result.code, contract);
       return { ok: true, id };
     },
   }),
