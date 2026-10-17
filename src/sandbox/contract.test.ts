@@ -1,29 +1,26 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { z } from "zod";
-import { manifest, request, stream } from "../manifest/define.js";
+import { catalog } from "../capabilities/catalog.js";
+import { request, stream } from "../capabilities/define.js";
 import { ContractSchema, validateContract } from "./contract.js";
 
-const m = manifest({
-  weather: {
-    hourly: request({
-      description: "Hourly weather",
-      effect: "none",
-      input: z.object({ latitude: z.number(), longitude: z.number() }),
-      output: z.object({ temperature: z.array(z.number()) }),
-      binding: () => ({ temperature: [] }),
-    }),
-    // Every input field is optional, so it can run without input.
-    current: request({
-      description: "Current weather",
-      effect: "none",
-      input: z.object({ units: z.enum(["c", "f"]).optional() }).optional(),
-      binding: () => {},
-    }),
-  },
-  lights: {
-    toggle: request({ description: "Toggle the lights", effect: "mutating", binding: () => {} }),
-  },
+const capabilities = catalog({
+  "weather.hourly": request({
+    description: "Hourly weather",
+    effect: "none",
+    input: z.object({ latitude: z.number(), longitude: z.number() }),
+    output: z.object({ temperature: z.array(z.number()) }),
+    binding: () => ({ temperature: [] }),
+  }),
+  // Every input field is optional, so it can run without input.
+  "weather.current": request({
+    description: "Current weather",
+    effect: "none",
+    input: z.object({ units: z.enum(["c", "f"]).optional() }).optional(),
+    binding: () => {},
+  }),
+  "lights.toggle": request({ description: "Toggle the lights", effect: "mutating", binding: () => {} }),
   ping: stream({
     description: "Ping",
     output: z.string(),
@@ -31,7 +28,7 @@ const m = manifest({
   }),
 });
 
-const check = (contract: unknown) => validateContract(ContractSchema.parse(contract), m);
+const check = (contract: unknown) => validateContract(ContractSchema.parse(contract), capabilities);
 
 test("the schema fills in defaults", () => {
   assert.deepEqual(ContractSchema.parse({ p: { capability: "ping" } }), {
@@ -69,8 +66,13 @@ test("an empty contract is valid", () => {
 });
 
 test("unknown capabilities are reported, prototype-chain paths included", () => {
-  const errors = check({ a: { capability: "weather.daily" }, b: { capability: "constructor" } });
-  assert.equal(errors.length, 2);
+  const errors = check({
+    a: { capability: "weather.daily" },
+    b: { capability: "constructor" },
+    c: { capability: "__proto__" },
+    d: { capability: "weather" },
+  });
+  assert.equal(errors.length, 4);
   assert.match(errors[0]!, /^a: unknown capability "weather.daily"/);
 });
 

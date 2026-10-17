@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { z } from "zod";
-import { manifest, request, stream, subscribe } from "../manifest/define.js";
+import { catalog } from "../capabilities/catalog.js";
+import { request, stream, subscribe } from "../capabilities/define.js";
 import type { BridgeResponse } from "../protocol.js";
 import { createBridge } from "./bridge.js";
 import { createSandbox } from "./sandbox.js";
@@ -22,41 +23,37 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {
 
 const probe = { streamSignal: undefined as AbortSignal | undefined, torndown: false };
 
-const m = manifest({
-  math: {
-    add: request({
-      description: "Add two numbers",
-      effect: "none",
-      input: z.object({ a: z.number(), b: z.number() }),
-      output: z.object({ sum: z.number() }),
-      binding: (_, { a, b }) => ({ sum: a + b }),
-    }),
-  },
-  live: {
-    counter: stream({
-      description: "Counts up",
-      output: z.object({ n: z.number() }),
-      binding: async function* (opts) {
-        probe.streamSignal = opts.signal;
-        let n = 0;
-        while (!opts.signal.aborted) {
-          yield { n: n++ };
-          await sleep(5, opts.signal);
-        }
-      },
-    }),
-    events: subscribe({
-      description: "Emits events",
-      output: z.object({ message: z.string() }),
-      binding: ({ emit }) => {
-        const id = setInterval(() => emit({ message: "hi" }), 5);
-        return () => {
-          clearInterval(id);
-          probe.torndown = true;
-        };
-      },
-    }),
-  },
+const capabilities = catalog({
+  "math.add": request({
+    description: "Add two numbers",
+    effect: "none",
+    input: z.object({ a: z.number(), b: z.number() }),
+    output: z.object({ sum: z.number() }),
+    binding: (_, { a, b }) => ({ sum: a + b }),
+  }),
+  "live.counter": stream({
+    description: "Counts up",
+    output: z.object({ n: z.number() }),
+    binding: async function* (opts) {
+      probe.streamSignal = opts.signal;
+      let n = 0;
+      while (!opts.signal.aborted) {
+        yield { n: n++ };
+        await sleep(5, opts.signal);
+      }
+    },
+  }),
+  "live.events": subscribe({
+    description: "Emits events",
+    output: z.object({ message: z.string() }),
+    binding: ({ emit }) => {
+      const id = setInterval(() => emit({ message: "hi" }), 5);
+      return () => {
+        clearInterval(id);
+        probe.torndown = true;
+      };
+    },
+  }),
 });
 
 // The contract is stored as-is: validateContract is tested on its own, and
@@ -73,7 +70,7 @@ const setup = () => {
   sandbox.set("c", "", contract);
   sandbox.set("d", "", contract);
   const sent: BridgeResponse[] = [];
-  const bridge = createBridge(m, sandbox.entry, (msg) => void sent.push(msg));
+  const bridge = createBridge(capabilities, sandbox.entry, (msg) => void sent.push(msg));
   return { bridge, sent };
 };
 

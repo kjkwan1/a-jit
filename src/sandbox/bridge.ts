@@ -1,15 +1,14 @@
 import { z } from "zod";
-import type { GroupNode } from "../manifest/define.js";
-import { open } from "../manifest/dispatch.js";
-import { resolve } from "../manifest/view.js";
+import type { Catalog } from "../capabilities/catalog.js";
+import { open } from "../capabilities/dispatch.js";
 import type { BridgeRequest, BridgeResponse, ContractEntry } from "../protocol.js";
 
 /**
  * Node-side end of the frame channel: runs contract entries against the
- * manifest and streams back the results. See `BridgeRequest` and
+ * capabilities and streams back the results. See `BridgeRequest` and
  * `BridgeResponse` in protocol.ts for the messages.
  *
- * Components address data by contract key, never by capability path, so a
+ * Components address data by contract key, never by capability name, so a
  * component can only reach what its contract declares.
  */
 
@@ -32,7 +31,7 @@ export type ContractLookup = (component: string, key: string) => ContractEntry |
 export type Bridge = ReturnType<typeof createBridge>;
 
 export function createBridge(
-  manifest: GroupNode,
+  capabilities: Catalog,
   lookup: ContractLookup,
   send: (message: BridgeResponse) => void,
 ) {
@@ -44,8 +43,8 @@ export function createBridge(
     if (!entry) {
       return send({ type: "error", id, message: `Component "${component}" has no contract entry "${key}".` });
     }
-    const node = resolve(manifest, entry.capability);
-    if (!node) {
+    const capability = capabilities.get(entry.capability);
+    if (!capability) {
       return send({ type: "error", id, message: `Unknown capability "${entry.capability}".` });
     }
 
@@ -56,7 +55,7 @@ export function createBridge(
     const post = (message: BridgeResponse) => signal.aborted || send(message);
 
     try {
-      for await (const data of open(node, input === undefined ? entry.input : input, signal)) {
+      for await (const data of open(capability, input === undefined ? entry.input : input, signal)) {
         post({ type: "next", id, data });
       }
       post({ type: "done", id });

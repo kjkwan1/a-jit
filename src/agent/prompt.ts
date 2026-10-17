@@ -1,7 +1,6 @@
-import type { ManifestView } from "../manifest/view.js";
+import type { CapabilityView } from "../capabilities/view.js";
 import { ALLOWED_IMPORTS } from "../sandbox/compile.js";
 
-/** How to write and submit components. Shared by the chat system prompt and the MCP server instructions. */
 const COMPONENT_GUIDE = [
   "## Building components",
   "Use the `submit_component` tool to put a component on the page, `list_components` to see what is there,",
@@ -16,13 +15,12 @@ const COMPONENT_GUIDE = [
   "After a successful submission, briefly tell the user what you built.",
 ];
 
-/** The contract vocabulary and the `a-jit` runtime. */
 const DATA_GUIDE = [
   "## Using live data",
   "Decide what data a component needs before writing it, and declare it in the `contract` argument of `submit_component`:",
-  "an object mapping keys you choose to capability entries. The component reads each one by its key; it never uses capability paths.",
+  "an object mapping keys you choose to capability entries. The component reads each one by its key; it never uses capability names.",
   "Entry fields:",
-  "- `capability`: the capability's path.",
+  "- `capability`: the capability's name.",
   '- `start`: `"mount"` runs as soon as the component appears; `"demand"` (default) waits until the component calls `run()`.',
   '  Use mount for data shown right away, demand for data fetched after an interaction or with input the user picks.',
   '- `keep`: how many values to keep: `"latest"` (default), `"all"`, or a number N for the last N (e.g. a chart of a stream).',
@@ -41,7 +39,7 @@ const DATA_GUIDE = [
   '- `cancel()`: stops the current run; status becomes `"idle"`.',
   "`useData` throws for a key that is not in the contract.",
   "",
-  "Example, with illustrative capability paths. Contract:",
+  "Example, with illustrative capability names. Contract:",
   '`{ "quote": { "capability": "stocks.quote", "start": "mount", "input": { "symbol": "AAPL" } },',
   '   "ticks": { "capability": "stocks.ticks", "start": "mount", "keep": 20 } }`',
   "Source:",
@@ -65,19 +63,20 @@ const DATA_GUIDE = [
 ];
 
 const EFFECTS = [
-  "Each capability is addressed by its `path`. `effect` describes its side effects:",
+  "Each capability is addressed by its `name`. `kind` says how its values arrive: a `request` delivers one value,",
+  "a `stream` or `subscribe` keeps delivering. `effect` describes its side effects:",
   "`none` is read-only, `mutating` changes state, `destructive` may lose data.",
   "Components can only use capabilities whose effect is `none` for now.",
 ];
 
 /** The capability list as the model sees it. */
-export const describeCapabilities = (view: ManifestView): string =>
-  [...EFFECTS, "", "Capabilities (JSON):", JSON.stringify(Object.values(view.capabilities), null, 2)].join("\n");
+export const describeCapabilities = (views: readonly CapabilityView[]): string =>
+  [...EFFECTS, "", "Capabilities (JSON):", JSON.stringify(views)].join("\n");
 
 /**
  * Chat mode: the whole picture up front, since the CLI owns the system prompt.
  */
-export const buildSystemPrompt = (view: ManifestView): string =>
+export const buildSystemPrompt = (views: readonly CapabilityView[]): string =>
   [
     "You are a helpful assistant that builds small interactive UIs on demand.",
     "You talk with the user in a terminal. The components you build are shown on a separate web page the user has open.",
@@ -88,7 +87,7 @@ export const buildSystemPrompt = (view: ManifestView): string =>
     "",
     "## Capabilities",
     "You can only interact with the outside world through the capabilities below.",
-    describeCapabilities(view),
+    describeCapabilities(views),
   ].join("\n");
 
 /**

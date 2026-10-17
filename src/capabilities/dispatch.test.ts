@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { z } from "zod";
-import { request, stream, subscribe } from "./define.js";
+import { CAPABILITY, isCapability, request, stream, subscribe } from "./define.js";
 import { open } from "./dispatch.js";
 
 const collect = async (items: AsyncIterable<unknown>) => {
@@ -39,6 +39,17 @@ test("open: a stream yields each validated item", async () => {
     },
   });
   assert.deepEqual(await collect(open(count, undefined, signal())), [1, 2]);
+});
+
+test("factories brand their capability, and only reads may stream or subscribe", () => {
+  const s = stream({ description: "S", output: z.number(), binding: async function* () {} });
+  assert.equal(isCapability(s), true);
+  assert.equal(s.effect, "none");
+  assert.equal(isCapability({ kind: "request", binding: () => {} }), false);
+  assert.equal(isCapability({ [Symbol("a-jit.capability")]: true }), false);
+  // Another copy of a-jit marks its capabilities with the same registered symbol.
+  assert.equal(isCapability({ [Symbol.for("a-jit.capability")]: true }), true);
+  assert.equal(CAPABILITY, Symbol.for("a-jit.capability"));
 });
 
 test("open: a subscription yields emitted events until aborted, then tears down", async () => {

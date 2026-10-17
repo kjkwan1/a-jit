@@ -3,23 +3,22 @@ import { request as httpRequest } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import { z } from "zod";
-import { manifest, request, stream } from "../manifest/define.js";
+import { catalog } from "../capabilities/catalog.js";
+import { request, stream } from "../capabilities/define.js";
 import type { BridgeResponse, ComponentEntry, Contract } from "../protocol.js";
 import { createSandbox } from "./sandbox.js";
 import { IFRAME_CSP, SESSION_HEADER, createPageServer } from "./server.js";
 
 const probe = { counterSignal: undefined as AbortSignal | undefined };
 
-const m = manifest({
-  math: {
-    add: request({
-      description: "Add",
-      effect: "none",
-      input: z.object({ a: z.number(), b: z.number() }),
-      output: z.number(),
-      binding: (_, { a, b }) => a + b,
-    }),
-  },
+const capabilities = catalog({
+  "math.add": request({
+    description: "Add",
+    effect: "none",
+    input: z.object({ a: z.number(), b: z.number() }),
+    output: z.number(),
+    binding: (_, { a, b }) => a + b,
+  }),
   counter: stream({
     description: "Counts up",
     output: z.number(),
@@ -39,7 +38,7 @@ const contract: Contract = {
 };
 
 const sandbox = createSandbox();
-const { server } = createPageServer(sandbox, m);
+const { server } = createPageServer(sandbox, capabilities);
 let base = "";
 let host = "";
 
@@ -279,6 +278,22 @@ test("replacing or removing a component cancels its calls", async () => {
     await waitFor(() => signal.aborted);
   }
   await events.close();
+});
+
+test("close() stops a started server and ends its sessions", async () => {
+  const own = createPageServer(createSandbox(), capabilities);
+  await own.close(); // Never started: nothing to do.
+  const url = await own.start(0);
+  const res = await fetch(`${url}/events`);
+  const reader = res.body!.getReader();
+  await reader.read();
+  await own.close();
+  assert.equal(own.server.listening, false);
+  // The event stream ends (or errors) instead of hanging.
+  const read = () => reader.read().catch(() => ({ done: true }));
+  while (!(await read()).done) {
+    continue;
+  }
 });
 
 test("the host page loads its script", async () => {

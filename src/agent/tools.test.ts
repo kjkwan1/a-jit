@@ -1,26 +1,25 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { z } from "zod";
-import { manifest, request } from "../manifest/define.js";
+import { catalog } from "../capabilities/catalog.js";
+import { request } from "../capabilities/define.js";
 import { createSandbox } from "../sandbox/sandbox.js";
 import { executeTool } from "./tool.js";
 import { componentTools } from "./tools.js";
 
-const m = manifest({
-  math: {
-    add: request({
-      description: "Add",
-      effect: "none",
-      input: z.object({ a: z.number(), b: z.number() }),
-      output: z.number(),
-      binding: (_, { a, b }) => a + b,
-    }),
-  },
+const capabilities = catalog({
+  "math.add": request({
+    description: "Add",
+    effect: "none",
+    input: z.object({ a: z.number(), b: z.number() }),
+    output: z.number(),
+    binding: (_, { a, b }) => a + b,
+  }),
 });
 
 const setup = () => {
   const sandbox = createSandbox();
-  const tools = componentTools(sandbox, m);
+  const tools = componentTools(sandbox, capabilities);
   const call = async (name: string, args: unknown) => {
     const outcome = await executeTool(tools.find((t) => t.name === name)!, args);
     return (outcome.ok ? outcome.result : { error: outcome.error }) as any;

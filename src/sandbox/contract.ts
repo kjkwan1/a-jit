@@ -1,16 +1,15 @@
 import { z } from "zod";
-import type { GroupNode } from "../manifest/define.js";
-import { resolve } from "../manifest/view.js";
+import type { Catalog } from "../capabilities/catalog.js";
 import type { Contract, ContractEntry } from "../protocol.js";
 
 /** Contract keys become names in component code, so they must be identifiers. */
 export const CONTRACT_KEY = /^[A-Za-z_$][\w$]*$/;
 
-// Parses the shape; `validateContract` then checks it against the manifest.
+// Parses the shape; `validateContract` then checks it against the capabilities.
 // The descriptions are what the model reads in the tool's JSON Schema.
 
 export const ContractEntrySchema = z.strictObject({
-  capability: z.string().describe("Path of the capability to use, e.g. \"weather.hourly\"."),
+  capability: z.string().describe("Name of the capability to use, e.g. \"weather.hourly\"."),
   start: z
     .enum(["mount", "demand"])
     .default("demand")
@@ -30,7 +29,7 @@ export const ContractSchema = z
   .describe("The data the component uses, by key. The component reads each entry with useData(key).") satisfies z.ZodType<Contract>;
 
 /**
- * Checks a parsed contract against the manifest. Returns one message per
+ * Checks a parsed contract against the capabilities. Returns one message per
  * problem, or none if the contract is usable:
  * - every capability exists;
  * - inputs match the capability's input schema, and a `mount` entry has all
@@ -38,32 +37,31 @@ export const ContractSchema = z
  * - only read-only capabilities are used, since nothing yet asks the user to
  *   confirm changes.
  */
-export function validateContract(contract: Contract, manifest: GroupNode): string[] {
+export function validateContract(contract: Contract, capabilities: Catalog): string[] {
   const errors: string[] = [];
 
   for (const [key, entry] of Object.entries(contract)) {
-    const node = resolve(manifest, entry.capability);
-    if (!node) {
+    const capability = capabilities.get(entry.capability);
+    if (!capability) {
       errors.push(`${key}: unknown capability "${entry.capability}".`);
       continue;
     }
 
-    const effect = node.effect ?? "none";
-    if (effect !== "none") {
+    if (capability.effect !== "none") {
       errors.push(
-        `${key}: "${entry.capability}" is ${effect}. Components can only use read-only capabilities for now.`,
+        `${key}: "${entry.capability}" is ${capability.effect}. Components can only use read-only capabilities for now.`,
       );
       continue;
     }
 
-    if (!node.input) {
+    if (!capability.input) {
       if (entry.input !== undefined) errors.push(`${key}: "${entry.capability}" takes no input.`);
       continue;
     }
 
     // A demand entry may leave its input to run(input); a mount entry runs with what it has.
     if (entry.input === undefined && entry.start === "demand") continue;
-    const parsed = node.input.safeParse(entry.input);
+    const parsed = capability.input.safeParse(entry.input);
     if (!parsed.success) {
       const what =
         entry.input === undefined

@@ -4,7 +4,8 @@ import { createPortal } from 'preact/compat';
 import * as hooks from 'preact/hooks';
 import { useErrorBoundary, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import * as jsxRuntime from 'preact/jsx-runtime';
-import { COMPONENT_GLOBAL, type ComponentEntry, type FrameToHost, type HostToFrame } from '../protocol';
+import { COMPONENT_GLOBAL, type ComponentEntry, type FrameContract, type FrameToHost, type HostToFrame } from '../protocol';
+import { calls, ContractProvider, useData } from './runtime';
 
 const components = new Map<string, ComponentType>();
 
@@ -15,7 +16,8 @@ const components = new Map<string, ComponentType>();
   'preact': preact,
   'preact/hooks': hooks,
   'preact/jsx-runtime': jsxRuntime,
-  'a-jit': {},
+  // Only what components may use: the shell's internals stay out of reach.
+  'a-jit': { useData },
   register: (id: string, Component: ComponentType) => components.set(id, Component),
 };
 
@@ -25,11 +27,13 @@ function Boundary({ children }: { children: ComponentChildren }) {
   return error ? <p>Component failed: {String(error)}</p> : <>{children}</>;
 }
 
+type SlotProps = { id: string; version: number; contract: FrameContract; Component: ComponentType | undefined };
+
 /**
  * One cell of the layout. The component renders into a shadow root (via a portal,
  * so it's still part of this one Preact tree), which scopes its styles.
  */
-function Slot({ version, Component }: { version: number; Component: ComponentType | undefined }) {
+function Slot({ id, version, contract, Component }: SlotProps) {
   const host = useRef<HTMLDivElement>(null);
   const [shadow, setShadow] = useState<ShadowRoot | null>(null);
 
@@ -42,9 +46,13 @@ function Slot({ version, Component }: { version: number; Component: ComponentTyp
       {shadow &&
         createPortal(
           Component ? (
-            <Boundary key={version}>
-              <Component />
-            </Boundary>
+            // The version key remounts a replaced component with fresh sources,
+            // which cancels the old version's calls and clears any error.
+            <ContractProvider key={version} id={id} contract={contract}>
+              <Boundary>
+                <Component />
+              </Boundary>
+            </ContractProvider>
           ) : (
             <p>Failed to load component.</p>
           ),
@@ -87,10 +95,9 @@ const update = async (entries: ComponentEntry[]) => {
 
   render(
     <>
-      {entries.map(({ id, version }) => (
-        // Keyed by id so other slots keep their state; the version key inside
-        // remounts only the replaced component, clearing any previous error.
-        <Slot key={id} version={version} Component={components.get(id)} />
+      {entries.map(({ id, version, contract }) => (
+        // Keyed by id so other slots keep their state.
+        <Slot key={id} id={id} version={version} contract={contract} Component={components.get(id)} />
       ))}
     </>,
     document.getElementById('app')!,
@@ -101,9 +108,19 @@ const update = async (entries: ComponentEntry[]) => {
 let queue = Promise.resolve();
 
 window.addEventListener('message', (event: MessageEvent<HostToFrame>) => {
-  if (event.source !== window.parent || event.data?.type !== 'components') return;
-  const { components: entries } = event.data;
-  queue = queue.then(() => update(entries));
+  if (event.source !== window.parent) return;
+  const message = event.data;
+  switch (message?.type) {
+    case 'components':
+      queue = queue.then(() => update(message.components));
+      return;
+    case 'bridge':
+      calls.receive(message.message);
+      return;
+    case 'session':
+      calls.lost();
+      return;
+  }
 });
 
 const ready: FrameToHost = { type: 'ready' };

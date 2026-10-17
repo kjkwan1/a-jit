@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { GroupNode } from "../manifest/define.js";
+import type { Catalog } from "../capabilities/catalog.js";
 import { createBridge, type Bridge } from "./bridge.js";
 import type { Sandbox } from "./sandbox.js";
 
@@ -113,7 +113,7 @@ export type PageServer = ReturnType<typeof createPageServer>;
  * carries a token, which `POST /bridge` must send back in `SESSION_HEADER`.
  * Closing the connection cancels the session's calls.
  */
-export const createPageServer = (sandbox: Sandbox, manifest: GroupNode) => {
+export const createPageServer = (sandbox: Sandbox, capabilities: Catalog) => {
   type Session = { res: ServerResponse; bridge: Bridge };
   const sessions = new Map<string, Session>();
 
@@ -140,7 +140,7 @@ export const createPageServer = (sandbox: Sandbox, manifest: GroupNode) => {
       "X-Content-Type-Options": "nosniff",
     });
     const token = randomUUID();
-    const bridge = createBridge(manifest, sandbox.entry, (message) => {
+    const bridge = createBridge(capabilities, sandbox.entry, (message) => {
       if (!res.destroyed) res.write(sseEvent("bridge", message));
     });
     sessions.set(token, { res, bridge });
@@ -246,5 +246,18 @@ export const createPageServer = (sandbox: Sandbox, manifest: GroupNode) => {
         });
         listen(port);
       })),
+
+    /**
+     * Stops the server if it was started. Dropping the open event streams
+     * closes their sessions, which cancels every call in flight.
+     */
+    close: async (): Promise<void> => {
+      if (!server.listening) {
+        return;
+      }
+      const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+      server.closeAllConnections();
+      await closed;
+    },
   };
 };

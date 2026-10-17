@@ -17,8 +17,8 @@
     "build": "esbuild src/page/frame.tsx src/page/host.ts src/page/*.html --bundle --format=iife --outdir=dist/page --loader:.html=copy --jsx=automatic --jsx-import-source=preact && tsc -p tsconfig.build.json",
     "typecheck": "tsc && tsc -p src/page",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
-    "start": "tsx src/main.ts chat examples/weather.ts",
-    "mcp": "tsx src/main.ts mcp examples/weather.ts",
+    "start": "tsx src/main.ts chat examples/bindings",
+    "mcp": "tsx src/main.ts mcp examples/bindings",
     "demo": "npm run build && tsx scripts/demo.ts"
   },
   "keywords": [],

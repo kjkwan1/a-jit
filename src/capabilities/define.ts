@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // ─── Core types ──────────────────────────────────────────────────────────────
 
@@ -32,16 +32,35 @@ type BindingFor<K extends Kind, I, O> = {
   ) => Teardown | Promise<Teardown>;
 }[K];
 
-export interface CapabilityNode<K extends Kind, I extends OptionalSchema, O extends OptionalSchema> {
-  readonly type: 'capability';
-  readonly kind: K;
+/**
+ * Marks capability objects. A registered symbol rather than a class, so the
+ * loader still recognizes a binding built against another copy of a-jit,
+ * e.g. one in the bindings directory's own node_modules.
+ */
+export const CAPABILITY: unique symbol = Symbol.for('a-jit.capability');
+
+/** A capability as the runtime sees it. The dispatcher validates input and output against the schemas. */
+export type Capability = {
+  readonly [CAPABILITY]: true;
   readonly description: string;
-  readonly input?: I;
-  readonly output?: O;
-  readonly effect?: EffectType;
+  readonly input?: OptionalSchema;
+  readonly output?: OptionalSchema;
+  readonly effect: EffectType;
   readonly tags: readonly string[];
-  readonly binding: BindingFor<K, I, O>;
-}
+} & (
+  | { readonly kind: 'request'; readonly binding: (opts: DispatchOptions, ...args: any[]) => unknown }
+  | { readonly kind: 'stream'; readonly binding: (opts: DispatchOptions, ...args: any[]) => AsyncIterable<unknown> }
+  | {
+      readonly kind: 'subscribe';
+      readonly binding: (
+        opts: DispatchOptions & { emit: (event: any) => void },
+        ...args: any[]
+      ) => Teardown | Promise<Teardown>;
+    }
+);
+
+export const isCapability = (value: unknown): value is Capability =>
+  typeof value === 'object' && value !== null && (value as { [CAPABILITY]?: unknown })[CAPABILITY] === true;
 
 type Base = {
   description: string;
@@ -57,56 +76,28 @@ export function request<I extends OptionalSchema = undefined, O extends Optional
     effect: EffectType; // required: forgetting it must not silently mean 'none'
     binding: BindingFor<'request', I, O>;
   },
-): CapabilityNode<'request', I, O> {
-  return { ...def, type: 'capability', kind: 'request', tags: def.tags ?? [] };
+): Capability {
+  return { ...def, [CAPABILITY]: true, kind: 'request', tags: def.tags ?? [] };
 }
 
+/** Streams only read, so their effect is always `none`. */
 export function stream<O extends Schema, I extends OptionalSchema = undefined>(
   def: Base & {
     input?: I;
     output: O; // required: a stream of void is meaningless
     binding: BindingFor<'stream', I, O>;
   },
-): CapabilityNode<'stream', I, O> {
-  return { ...def, type: 'capability', kind: 'stream', tags: def.tags ?? [] };
+): Capability {
+  return { ...def, [CAPABILITY]: true, kind: 'stream', effect: 'none', tags: def.tags ?? [] };
 }
 
+/** Subscriptions only read, so their effect is always `none`. */
 export function subscribe<O extends Schema, I extends OptionalSchema = undefined>(
   def: Base & {
     input?: I;
     output: O;
     binding: BindingFor<'subscribe', I, O>;
   },
-): CapabilityNode<'subscribe', I, O> {
-  return { ...def, type: 'capability', kind: 'subscribe', tags: def.tags ?? [] };
+): Capability {
+  return { ...def, [CAPABILITY]: true, kind: 'subscribe', effect: 'none', tags: def.tags ?? [] };
 }
-
-// ─── Runtime shape (what the view and dispatcher walk) ───────────────────────
-
-export type RuntimeCapabilityNode = {
-  readonly type: 'capability';
-  readonly description: string;
-  readonly input?: OptionalSchema;
-  readonly output?: OptionalSchema;
-  readonly effect?: EffectType;
-  readonly tags: readonly string[];
-} & (
-  | { readonly kind: 'request'; readonly binding: (opts: DispatchOptions, ...args: any[]) => unknown }
-  | { readonly kind: 'stream'; readonly binding: (opts: DispatchOptions, ...args: any[]) => AsyncIterable<unknown> }
-  | {
-      readonly kind: 'subscribe';
-      readonly binding: (
-        opts: DispatchOptions & { emit: (event: any) => void },
-        ...args: any[]
-      ) => Teardown | Promise<Teardown>;
-    }
-);
-
-export type GroupNode = {
-  readonly [key: string]: RuntimeCapabilityNode | GroupNode;
-};
-
-export function manifest<const M extends GroupNode>(tree: M): M {
-  return tree;
-}
-

@@ -1,8 +1,8 @@
 import { buildSystemPrompt } from "../../agent/prompt.js";
 import { componentTools } from "../../agent/tools.js";
+import type { Catalog } from "../../capabilities/catalog.js";
+import { toViews } from "../../capabilities/view.js";
 import type { Config } from "../../config.js";
-import type { GroupNode } from "../../manifest/define.js";
-import { asView } from "../../manifest/view.js";
 import { createSandbox } from "../../sandbox/sandbox.js";
 import { createPageServer } from "../../sandbox/server.js";
 import { clientInstance } from "./openai.js";
@@ -23,7 +23,7 @@ const chooseModel = async (instance: ReturnType<typeof clientInstance>, configur
 };
 
 /** Converses with an OpenAI-compatible model in the terminal. A dev harness next to MCP mode. */
-export const runChat = async (manifest: GroupNode, config: Config) => {
+export const runChat = async (capabilities: Catalog, config: Config) => {
   CLI.print("Welcome to A-JIT!");
   const instance = clientInstance(config.baseURL, config.apiKey);
   CLI.print(`Endpoint: ${config.baseURL}`);
@@ -41,16 +41,16 @@ export const runChat = async (manifest: GroupNode, config: Config) => {
     return;
   }
 
-  const view = asView(manifest);
-  CLI.print(`Manifest view: ${JSON.stringify(view, null, 2)}`);
+  const views = toViews(capabilities);
+  CLI.print(`Capabilities: ${views.map((v) => v.name).join(", ") || "none"}`);
   const sandbox = createSandbox();
-  CLI.print(`Components are shown at ${await createPageServer(sandbox, manifest).start(config.port)}`);
+  CLI.print(`Components are shown at ${await createPageServer(sandbox, capabilities).start(config.port)}`);
 
   const { sendMessage } = await instance.startChat({
     model,
-    systemPrompt: buildSystemPrompt(view),
+    systemPrompt: buildSystemPrompt(views),
     maxTokens: 96000,
-    tools: componentTools(sandbox, manifest),
+    tools: componentTools(sandbox, capabilities),
     onToolCall: (name, result) => CLI.print(`[${name}] ${result.length > 200 ? `${result.slice(0, 200)}…` : result}`),
   });
 

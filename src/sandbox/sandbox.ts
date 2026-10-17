@@ -1,4 +1,4 @@
-import { COMPONENT_ID, type ComponentEntry, type Contract, type ContractEntry } from "../protocol.js";
+import { COMPONENT_ID, toFrameContract, type ComponentEntry, type Contract, type ContractEntry } from "../protocol.js";
 
 export type Sandbox = ReturnType<typeof createSandbox>;
 
@@ -43,7 +43,8 @@ export const createSandbox = () => {
 
     ids: (): string[] => [...components.keys()],
 
-    entries: (): ComponentEntry[] => [...components].map(([id, { version }]) => ({ id, version })),
+    entries: (): ComponentEntry[] =>
+      [...components].map(([id, { version, contract }]) => ({ id, version, contract: toFrameContract(contract) })),
 
     /** Calls `listener` after every change. Returns a function that unsubscribes. */
     onChange(listener: () => void): () => void {

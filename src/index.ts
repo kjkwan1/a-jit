@@ -1,3 +1,4 @@
-// Public API for manifest authors: `import { manifest, request } from "a-jit"`.
-export { manifest, request, stream, subscribe } from "./manifest/define.js";
-export type { CapabilityNode, DispatchOptions, EffectType, GroupNode, Kind } from "./manifest/define.js";
+// Public API for binding authors: each file in the bindings directory does
+// `export default request({ ... })` (or `stream`, `subscribe`) from "a-jit".
+export { request, stream, subscribe } from "./capabilities/define.js";
+export type { Capability, DispatchOptions, EffectType, Kind, Teardown } from "./capabilities/define.js";

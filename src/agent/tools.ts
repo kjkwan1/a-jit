@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { GroupNode } from "../manifest/define.js";
-import type { ManifestView } from "../manifest/view.js";
+import type { Catalog } from "../capabilities/catalog.js";
+import type { CapabilityView } from "../capabilities/view.js";
 import { COMPONENT_ID } from "../protocol.js";
 import { compileComponent } from "../sandbox/compile.js";
 import { ContractSchema, validateContract } from "../sandbox/contract.js";
@@ -15,7 +15,7 @@ const ComponentId = z
   .describe("Short identifier made of letters, digits, '_' and '-'. Reusing an id replaces that component.");
 
 /** Tools that let the agent manage the components rendered on the page. */
-export const componentTools = (sandbox: Sandbox, manifest: GroupNode) => [
+export const componentTools = (sandbox: Sandbox, capabilities: Catalog) => [
   tool({
     name: "submit_component",
     description:
@@ -29,7 +29,7 @@ export const componentTools = (sandbox: Sandbox, manifest: GroupNode) => [
       source: z.string().describe("The component's full TSX source, with a default export."),
     }),
     run: async ({ id, contract, source }) => {
-      const contractErrors = validateContract(contract, manifest);
+      const contractErrors = validateContract(contract, capabilities);
       if (contractErrors.length) {
         return { ok: false, stage: "contract", errors: contractErrors.map((message) => ({ message })) };
       }
@@ -58,7 +58,7 @@ export const componentTools = (sandbox: Sandbox, manifest: GroupNode) => [
  * Tools for hosts that don't run A-JIT's own prompt (MCP): starting the page,
  * and reading the capability list on demand.
  */
-export const hostTools = (view: ManifestView, page: PageServer, port: number) => [
+export const hostTools = (views: readonly CapabilityView[], page: PageServer, port: number) => [
   tool({
     name: "open_sandbox",
     description: "Start the web page that shows components, if it isn't running, and return its URL for the user to open.",
@@ -69,6 +69,6 @@ export const hostTools = (view: ManifestView, page: PageServer, port: number) =>
     name: "get_capabilities",
     description: "Describe the live data and actions this server provides, with their input and output schemas.",
     input: z.object({}),
-    run: () => describeCapabilities(view),
+    run: () => describeCapabilities(views),
   }),
 ];

@@ -41,11 +41,13 @@
     "moduleDetection": "force",
     "skipLibCheck": true,
 
-    // Examples import the package by name, as manifest authors do; tsx honors this too.
+    // Example bindings import the package by name, as binding authors do; tsx honors this too.
     "paths": {
       "a-jit": ["./src/index.ts"]
     }
   },
   "include": ["src", "examples", "scripts"],
-  "exclude": ["node_modules", "dist", "src/page"]
+  // The page's DOM entry points have their own config (src/page/tsconfig.json);
+  // its DOM-free logic, like sources.ts, is checked and tested here.
+  "exclude": ["node_modules", "dist", "src/page/host.ts", "src/page/frame.tsx", "src/page/runtime.tsx"]
 }
